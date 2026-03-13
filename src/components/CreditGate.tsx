@@ -48,13 +48,13 @@ export function CreditGate({ isOpen, onClose, credits, requiredCredits = 1 }: Cr
             <div className="flex gap-3 w-full">
               <button
                 onClick={onClose}
-                className="flex-1 py-3 px-4 rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors"
+                className="flex-1 py-3 px-4 rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors min-h-[48px]"
               >
                 Cancel
               </button>
               <button
                 onClick={onClose}
-                className="flex-1 py-3 px-4 rounded-lg bg-purple-600 hover:bg-purple-500 transition-colors text-white font-medium"
+                className="flex-1 py-3 px-4 rounded-lg bg-purple-600 hover:bg-purple-500 transition-colors text-white font-medium min-h-[48px]"
               >
                 Use {requiredCredits} Credit
               </button>
@@ -62,7 +62,7 @@ export function CreditGate({ isOpen, onClose, credits, requiredCredits = 1 }: Cr
           ) : (
             <Link
               href="/credits"
-              className="w-full py-3 px-4 rounded-lg bg-purple-600 hover:bg-purple-500 transition-colors text-white font-medium flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-lg bg-purple-600 hover:bg-purple-500 transition-colors text-white font-medium flex items-center justify-center gap-2 min-h-[48px]"
             >
               <CreditCard className="w-4 h-4" />
               Buy Credits
