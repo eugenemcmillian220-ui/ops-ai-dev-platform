@@ -7,3 +7,4 @@ export { githubAgent } from './githubAgent';
 export { vercelAgent } from './vercelAgent';
 export { netlifyAgent } from './netlifyAgent';
 export { selfHealer } from './selfHealer';
+export { neonAgent } from './neonAgent';

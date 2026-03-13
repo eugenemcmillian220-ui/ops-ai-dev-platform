@@ -8,6 +8,7 @@ import {
   vercelAgent,
   netlifyAgent,
   selfHealer,
+  neonAgent,
 } from '@/agents';
 import { supabaseAdmin, addBuildLog, updateProject } from './db';
 import { enforceCredits, refundCredits } from './credits';
@@ -23,6 +24,7 @@ export interface PipelineState {
   architecture?: any;
   pages?: Record<string, string>;
   files?: Record<string, string>;
+  database?: any;
   repoUrl?: string;
   vercelUrl?: string;
   netlifyUrl?: string;
@@ -73,8 +75,22 @@ export async function runPipelineStep(state: PipelineState): Promise<PipelineSta
 
     case 'schema': {
       state.schema = await schemaAgent(state.projectId, state.requirements);
+      state.step = 'neon';
+      await updateProject(state.projectId, { current_step: 'neon', progress: 20 });
+      break;
+    }
+
+    case 'neon': {
+      // Create Neon database for this app
+      const neonResult = await neonAgent(
+        state.projectId,
+        state.userId,
+        state.requirements?.appName || 'app',
+        state.schema
+      );
+      state.database = neonResult.database;
       state.step = 'architecture';
-      await updateProject(state.projectId, { current_step: 'architecture', progress: 25 });
+      await updateProject(state.projectId, { current_step: 'architecture', progress: 30 });
       break;
     }
 

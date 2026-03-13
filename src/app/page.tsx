@@ -87,14 +87,8 @@ export default function Home() {
     setPrompt(text);
   };
 
-  const handleSignIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    if (error) console.error('Sign in error:', error);
+  const handleSignIn = () => {
+    router.push('/auth?redirect=/');
   };
 
   return (
@@ -120,9 +114,9 @@ export default function Home() {
               <p className="text-zinc-400 mb-4">Sign in to start building</p>
               <button
                 onClick={handleSignIn}
-                className="w-full py-3 px-4 bg-white text-black rounded-lg font-medium hover:bg-zinc-200 transition-colors"
+                className="w-full py-3 px-4 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-500 transition-colors"
               >
-                Continue with GitHub
+                Get Started
               </button>
             </div>
           ) : (

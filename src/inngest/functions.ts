@@ -71,6 +71,12 @@ export const runPipeline = inngest.createFunction(
       return await schemaAgent(projectId, requirements);
     });
 
+    // Create Neon database for this app
+    const database = await step.run('neon', async () => {
+      const { neonAgent } = await import('@/agents');
+      return await neonAgent(projectId, userId, requirements.appName, schema);
+    });
+
     // Run architecture agent
     const architecture = await step.run('architecture', async () => {
       const { architectureAgent } = await import('@/agents');
@@ -92,6 +98,13 @@ export const runPipeline = inngest.createFunction(
     // Merge UI code into codebase
     const fullCode = { ...code, ...ui };
 
+    // Add Neon env vars to codebase if database created
+    if (database?.database?.connectionString) {
+      const { generateNeonEnvFile } = await import('@/agents/neonAgent');
+      fullCode['.env.local'] = generateNeonEnvFile(database.database.connectionString);
+      fullCode['.env.example'] = generateNeonEnvFile('postgresql://user:password@localhost/dbname');
+    }
+
     // Run GitHub agent
     const github = await step.run('github', async () => {
       const { githubAgent } = await import('@/agents');
@@ -103,6 +116,10 @@ export const runPipeline = inngest.createFunction(
       if (!github.repoUrl) return null;
       const { vercelAgent } = await import('@/agents');
       const envVars: Record<string, string> = {};
+      if (database?.database?.connectionString) {
+        envVars['DATABASE_URL'] = database.database.connectionString;
+        envVars['POSTGRES_URL'] = database.database.connectionString;
+      }
       if (architecture.envVars) {
         architecture.envVars.forEach((e: { name: string; required: boolean }) => {
           if (e.required) envVars[e.name] = 'placeholder';
@@ -116,6 +133,9 @@ export const runPipeline = inngest.createFunction(
       if (!github.repoUrl) return null;
       const { netlifyAgent } = await import('@/agents');
       const envVars: Record<string, string> = {};
+      if (database?.database?.connectionString) {
+        envVars['DATABASE_URL'] = database.database.connectionString;
+      }
       if (architecture.envVars) {
         architecture.envVars.forEach((e: { name: string; required: boolean }) => {
           if (e.required) envVars[e.name] = 'placeholder';
@@ -140,6 +160,7 @@ export const runPipeline = inngest.createFunction(
       repoUrl: github.repoUrl,
       vercelUrl: vercel?.deployUrl,
       netlifyUrl: netlify?.deployUrl,
+      databaseId: database?.database?.id,
     };
   }
 );
