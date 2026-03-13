@@ -1,31 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Sparkles, Mail, Lock, Github, Chrome, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, Loader2, Mail, Lock, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AuthPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/';
-  
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [message, setMessage] = useState('');
+  const router = useRouter();
   const supabase = createClient();
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setMessage(null);
+    setIsLoading(true);
+    setMessage('');
 
     try {
       if (isSignUp) {
@@ -37,103 +30,41 @@ export default function AuthPage() {
           },
         });
         if (error) throw error;
-        setMessage('Check your email for confirmation link!');
+        setMessage('Check your email for verification link!');
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        router.push(redirectTo);
+        router.push('/');
+        router.refresh();
       }
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOAuthSignIn = async (provider: 'github' | 'google') => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
-        },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      setError(err.message || `${provider} sign in failed`);
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-8">
+        {/* Header */}
+        <div className="text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-500/20 rounded-2xl mb-4">
             <Sparkles className="w-8 h-8 text-purple-400" />
           </div>
-          <h1 className="text-2xl font-bold">OPS AI DEV</h1>
-          <p className="text-zinc-400 mt-1">
-            {isSignUp ? 'Create your account' : 'Sign in to start building'}
+          <h1 className="text-2xl font-bold mb-2">Welcome to OPS AI DEV</h1>
+          <p className="text-zinc-400">
+            Sign in to start building AI-powered apps
           </p>
-        </div>
-
-        {/* Error / Success Messages */}
-        {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-        {message && (
-          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
-            {message}
-          </div>
-        )}
-
-        {/* OAuth Buttons */}
-        <div className="space-y-3 mb-6">
-          <button
-            onClick={() => handleOAuthSignIn('google')}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
-          >
-            <Chrome className="w-5 h-5 text-red-400" />
-            <span>Continue with Google</span>
-          </button>
-          
-          <button
-            onClick={() => handleOAuthSignIn('github')}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
-          >
-            <Github className="w-5 h-5" />
-            <span>Continue with GitHub</span>
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-zinc-800" />
-          </div>
-          <div className="relative flex justify-center">
-            <span className="bg-zinc-950 px-4 text-sm text-zinc-500">or continue with email</span>
-          </div>
         </div>
 
         {/* Email Form */}
         <form onSubmit={handleEmailAuth} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-2">
-              Email
-            </label>
+            <label className="block text-sm font-medium mb-2">Email</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
               <input
@@ -141,71 +72,66 @@ export default function AuthPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
+                className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-500"
                 required
-                className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg focus:outline-none focus:border-purple-500 text-white"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-2">
-              Password
-            </label>
+            <label className="block text-sm font-medium mb-2">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
               <input
-                type={showPassword ? 'text' : 'password'}
+                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-500"
                 required
                 minLength={8}
-                className="w-full pl-10 pr-12 py-3 bg-zinc-900 border border-zinc-800 rounded-lg focus:outline-none focus:border-purple-500 text-white"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-400"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
             </div>
           </div>
 
+          {message && (
+            <p className={`text-sm text-center ${message.includes('Check your email') ? 'text-green-400' : 'text-red-400'}`}>
+              {message}
+            </p>
+          )}
+
           <button
             type="submit"
-            disabled={loading || !email || !password}
-            className="w-full py-3 px-4 bg-purple-600 rounded-lg font-medium hover:bg-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
+            disabled={isLoading}
+            className="w-full py-3 px-4 bg-purple-600 rounded-lg font-medium hover:bg-purple-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               isSignUp ? 'Create Account' : 'Sign In'
             )}
           </button>
         </form>
 
-        {/* Toggle Sign In / Sign Up */}
-        <p className="mt-6 text-center text-sm text-zinc-400">
+        {/* Toggle */}
+        <p className="text-center text-sm">
           {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
           <button
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setError(null);
-              setMessage(null);
-            }}
-            className="text-purple-400 hover:text-purple-300 font-medium"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-purple-400 hover:text-purple-300"
           >
-            {isSignUp ? 'Sign in' : 'Sign up'}
+            {isSignUp ? 'Sign In' : 'Create Account'}
           </button>
         </p>
 
         {/* Back to Home */}
-        <div className="mt-8 text-center">
-          <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-400">
-            ← Back to home
-          </Link>
-        </div>
+        <Link 
+          href="/"
+          className="flex items-center justify-center gap-2 text-sm text-zinc-500 hover:text-zinc-400"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to home
+        </Link>
       </div>
     </div>
   );
