@@ -12,7 +12,8 @@ export const selfHealerCron = inngest.createFunction(
       .from('projects')
       .select('id, user_id, encrypted_secrets')
       .eq('status', 'failed')
-      .not('encrypted_secrets', 'like', '%healer_diagnosis%');
+      .not('encrypted_secrets', 'like', '%healer_diagnosis%')
+      .limit(5);
 
     if (!failedProjects || failedProjects.length === 0) {
       return { message: 'No failed projects to heal' };
@@ -22,7 +23,6 @@ export const selfHealerCron = inngest.createFunction(
 
     for (const project of failedProjects) {
       await step.run(`heal-project-${project.id}`, async () => {
-        // Get latest error from build logs
         const { data: logs } = await supabaseAdmin
           .from('build_logs')
           .select('message')
@@ -32,13 +32,9 @@ export const selfHealerCron = inngest.createFunction(
           .limit(5);
 
         const errorLog = logs?.map(l => l.message).join('\n') || 'Unknown error';
-
         const result = await selfHealer(project.id, project.user_id, errorLog);
         
-        return {
-          projectId: project.id,
-          ...result,
-        };
+        return { projectId: project.id, ...result };
       });
 
       results.push({ projectId: project.id, healed: true });
@@ -53,115 +49,132 @@ export const runPipeline = inngest.createFunction(
   { id: 'run-pipeline' },
   { event: 'pipeline/start' },
   async ({ event, step }) => {
-    const { userId, projectId, prompt } = event.data;
+    const { userId, projectId, prompt, name } = event.data;
 
-    await step.run('init-pipeline', async () => {
-      await addBuildLog(projectId, 'pipeline', 'Pipeline job started', 'info');
-    });
-
-    // Run requirements agent
-    const requirements = await step.run('requirements', async () => {
-      const { requirementsAgent } = await import('@/agents');
-      return await requirementsAgent(projectId, prompt);
-    });
-
-    // Run schema agent
-    const schema = await step.run('schema', async () => {
-      const { schemaAgent } = await import('@/agents');
-      return await schemaAgent(projectId, requirements);
-    });
-
-    // Create Neon database for this app
-    const database = await step.run('neon', async () => {
-      const { neonAgent } = await import('@/agents');
-      return await neonAgent(projectId, userId, requirements.appName, schema);
-    });
-
-    // Run architecture agent
-    const architecture = await step.run('architecture', async () => {
-      const { architectureAgent } = await import('@/agents');
-      return await architectureAgent(projectId, requirements);
-    });
-
-    // Run UI agent
-    const ui = await step.run('ui', async () => {
-      const { uiAgent } = await import('@/agents');
-      return await uiAgent(projectId, requirements.pages, architecture.techStack);
-    });
-
-    // Run code agent
-    const code = await step.run('code', async () => {
-      const { codeAgent } = await import('@/agents');
-      return await codeAgent(projectId, architecture.fileStructure, architecture);
-    });
-
-    // Merge UI code into codebase
-    const fullCode = { ...code, ...ui };
-
-    // Add Neon env vars to codebase if database created
-    if (database?.database?.connectionString) {
-      const { generateNeonEnvFile } = await import('@/agents/neonAgent');
-      fullCode['.env.local'] = generateNeonEnvFile(database.database.connectionString);
-      fullCode['.env.example'] = generateNeonEnvFile('postgresql://user:password@localhost/dbname');
-    }
-
-    // Run GitHub agent
-    const github = await step.run('github', async () => {
-      const { githubAgent } = await import('@/agents');
-      return await githubAgent(projectId, userId, requirements.appName, fullCode);
-    });
-
-    // Run Vercel agent
-    const vercel = await step.run('vercel', async () => {
-      if (!github.repoUrl) return null;
-      const { vercelAgent } = await import('@/agents');
-      const envVars: Record<string, string> = {};
-      if (database?.database?.connectionString) {
-        envVars['DATABASE_URL'] = database.database.connectionString;
-        envVars['POSTGRES_URL'] = database.database.connectionString;
-      }
-      if (architecture.envVars) {
-        architecture.envVars.forEach((e: { name: string; required: boolean }) => {
-          if (e.required) envVars[e.name] = 'placeholder';
-        });
-      }
-      return await vercelAgent(projectId, github.repoUrl, requirements.appName, envVars);
-    });
-
-    // Run Netlify agent (backup)
-    const netlify = await step.run('netlify', async () => {
-      if (!github.repoUrl) return null;
-      const { netlifyAgent } = await import('@/agents');
-      const envVars: Record<string, string> = {};
-      if (database?.database?.connectionString) {
-        envVars['DATABASE_URL'] = database.database.connectionString;
-      }
-      if (architecture.envVars) {
-        architecture.envVars.forEach((e: { name: string; required: boolean }) => {
-          if (e.required) envVars[e.name] = 'placeholder';
-        });
-      }
-      return await netlifyAgent(projectId, github.repoUrl, requirements.appName, envVars);
-    });
-
-    await step.run('complete', async () => {
-      await updateProject(projectId, {
-        status: vercel?.deployUrl ? 'deployed' : 'failed',
-        current_step: vercel?.deployUrl ? 'complete' : 'failed',
-        progress: 100,
-        repo_url: github.repoUrl,
-        vercel_url: vercel?.deployUrl,
-        netlify_url: netlify?.deployUrl,
+    try {
+      await step.run('init-pipeline', async () => {
+        await addBuildLog(projectId, 'pipeline', 'Pipeline job started', 'info');
       });
-    });
 
-    return {
-      success: !!vercel?.deployUrl,
-      repoUrl: github.repoUrl,
-      vercelUrl: vercel?.deployUrl,
-      netlifyUrl: netlify?.deployUrl,
-      databaseId: database?.database?.id,
-    };
+      // Run requirements agent
+      const requirements = await step.run('requirements', async () => {
+        const { requirementsAgent } = await import('@/agents');
+        return await requirementsAgent(projectId, prompt);
+      });
+
+      // Run schema agent
+      const schema = await step.run('schema', async () => {
+        const { schemaAgent } = await import('@/agents');
+        return await schemaAgent(projectId, requirements);
+      });
+
+      // Create Neon database for this app
+      const database = await step.run('neon', async () => {
+        const { neonAgent } = await import('@/agents');
+        return await neonAgent(projectId, userId, requirements.appName || name, schema);
+      });
+
+      // Run architecture agent
+      const architecture = await step.run('architecture', async () => {
+        const { architectureAgent } = await import('@/agents');
+        return await architectureAgent(projectId, requirements);
+      });
+
+      // Run UI agent
+      const ui = await step.run('ui', async () => {
+        const { uiAgent } = await import('@/agents');
+        return await uiAgent(projectId, requirements.pages, architecture.techStack);
+      });
+
+      // Run code agent
+      const code = await step.run('code', async () => {
+        const { codeAgent } = await import('@/agents');
+        return await codeAgent(projectId, architecture.fileStructure, architecture);
+      });
+
+      // Merge UI code into codebase
+      const fullCode = { ...code, ...ui };
+
+      // Add Neon env vars to codebase if database created
+      if (database?.database?.connectionString) {
+        const { generateNeonEnvFile } = await import('@/agents/neonAgent');
+        fullCode['.env.local'] = generateNeonEnvFile(database.database.connectionString);
+        fullCode['.env.example'] = generateNeonEnvFile('postgresql://user:password@localhost/dbname');
+      }
+
+      // Run GitHub agent
+      const github = await step.run('github', async () => {
+        const { githubAgent } = await import('@/agents');
+        return await githubAgent(projectId, userId, requirements.appName || name, fullCode);
+      });
+
+      if (!github.repoUrl) {
+        throw new Error('GitHub repository creation failed');
+      }
+
+      // Run Vercel agent
+      const vercel = await step.run('vercel', async () => {
+        const { vercelAgent } = await import('@/agents');
+        const envVars: Record<string, string> = {};
+        if (database?.database?.connectionString) {
+          envVars['DATABASE_URL'] = database.database.connectionString;
+          envVars['POSTGRES_URL'] = database.database.connectionString;
+        }
+        if (architecture.envVars) {
+          architecture.envVars.forEach((e: { name: string; required: boolean }) => {
+            if (e.required) envVars[e.name] = 'placeholder';
+          });
+        }
+        return await vercelAgent(projectId, github.repoUrl, requirements.appName || name, envVars);
+      });
+
+      // Run Netlify agent (backup)
+      const netlify = await step.run('netlify', async () => {
+        const { netlifyAgent } = await import('@/agents');
+        const envVars: Record<string, string> = {};
+        if (database?.database?.connectionString) {
+          envVars['DATABASE_URL'] = database.database.connectionString;
+        }
+        if (architecture.envVars) {
+          architecture.envVars.forEach((e: { name: string; required: boolean }) => {
+            if (e.required) envVars[e.name] = 'placeholder';
+          });
+        }
+        return await netlifyAgent(projectId, github.repoUrl, requirements.appName || name, envVars);
+      });
+
+      await step.run('complete', async () => {
+        await updateProject(projectId, {
+          status: vercel?.deployUrl ? 'deployed' : 'failed',
+          current_step: vercel?.deployUrl ? 'complete' : 'failed',
+          progress: 100,
+          repo_url: github.repoUrl,
+          vercel_url: vercel?.deployUrl,
+          netlify_url: netlify?.deployUrl,
+        });
+      });
+
+      return {
+        success: !!vercel?.deployUrl,
+        repoUrl: github.repoUrl,
+        vercelUrl: vercel?.deployUrl,
+        netlifyUrl: netlify?.deployUrl,
+        databaseId: database?.database?.id,
+      };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      
+      await step.run('handle-failure', async () => {
+        await updateProject(projectId, {
+          status: 'failed',
+          current_step: 'failed',
+        });
+        await addBuildLog(projectId, 'pipeline', `Pipeline failed: ${error}`, 'error');
+        await refundCredits(userId, projectId, 1);
+      });
+
+      throw err;
+    }
   }
 );
 

@@ -70,6 +70,12 @@ export default function Home() {
 
       const data = await response.json();
 
+      if (response.status === 402 || data.error === 'Insufficient credits') {
+        setUser(prev => prev ? { ...prev, credits: data.credits || 0 } : null);
+        setShowCreditGate(true);
+        return;
+      }
+
       if (data.success && data.projectId) {
         router.push(`/projects/${data.projectId}`);
       } else if (data.error) {
